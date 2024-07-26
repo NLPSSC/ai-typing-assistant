@@ -8,7 +8,7 @@ def query_prompt(prompt):
         OLLAMA_ENDPOINT,
         json={"prompt": prompt, **OLLAMA_CONFIG},
         headers={"Content-Type": "application/json"},
-        timeout=300,
+        timeout=300000,
     )
     if response.status_code != 200:
         print("Error", response.status_code)

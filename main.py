@@ -1,30 +1,76 @@
+from dataclasses import asdict
+from functools import partial
+import random
+import time
+from typing import Any, Dict, List, Tuple
 from typing import List
-import httpx
-import formatting
 from llm import query_prompt
-from ollama_config import OLLAMA_CONFIG, OLLAMA_ENDPOINT
+import pandas as pd
+from ollama_config import OLLAMA_CONFIG
+from parser import PromptResult, extract_results
 
+NEWLINE = "\n"
 
-def build_prompt(sentences: List[str]) -> str:
+WEIGHTED_LABELS = {
+    "CURRENT_SMOKER":{
+        'weight': 2,
+        'reason': 'the person is a smoker'
+    },
+    "NEVER_SMOKED":{
+        'weight': 1,
+        'reason': 'the person has never smoked'
+    },
+    "PAST_SMOKER":{
+        'weight': 4,
+        'reason': 'the person quit smoking in the past'
+    },
+    "TOBACCO_USER":{
+        'synonym_of': 'NEVER_SMOKED'
+    },
+    "NEVER_SMOKER":{
+        'synonym_of': 'NEVER_SMOKED'
+    }
+}
 
-    NEWLINE = "\n"
+def build_label_prompt(label, reason):
+    return f'Return the label {label}, if {reason}'
+
+def get_weight(weighted_labels: Dict[str, Any], k: str) -> Tuple[str, int]:
+    v = weighted_labels[k]
+    if 'weight' in v:
+        return str(k), int(v['weight'])
+    elif 'synonym_of' in v:
+        new_key = v['synonym_of'] 
+        return str(new_key), int(weighted_labels[new_key]['weight'])
+    else:
+        return str("UNKNOWN"), int(-1)
+    
+label_lookup = partial(get_weight, WEIGHTED_LABELS)
+
+# weighted_labels = {i[0]:i[1] for i in [label_lookup(k, v) for  k,v in WEIGHTED_LABELS.items()]}
+
+def build_prompt(text_to_check) -> str:
+    # Qualify each label with an assertion of LOW, MEDIUM, or HIGH probability.
+    enumerated_points: Dict[int, str] = build_enumerated_points(text_to_check)
 
     prefix = [
-        "The each of following phrases are descriptions about a person and their smoking status.",
-        "Evaluate each of these phrases, and return a label indicating their smoking status.",
+        "This is an exercise to label sentences to indicate smoking status for people.",
+        "Smoking status does not include references to marijuana or chewing tobacco as part of the labeling.",
+        "Each of following numbered phrases represent an assertion about smoking status for different people.",
     ]
     
     suffix: List[str] = [
-        "Return on of the following labels:",
-        "",
-        "- if the person is a smoker, return the label CURRENT_SMOKER",
-        "- if the person quit smoking in the past, return the label PAST_SMOKER",
-        "- if the person has never smoked, return the label NEVER_SMOKED"
+        "Return only one of the following labels:",
+        "   - Return the label CURRENT_SMOKER, if the person is a smoker,",
+        "   - Return the label PAST_SMOKER, if the person quit smoking in the past, or",
+        "   - Return the label NEVER_SMOKED, if the person has never smoked.",
+        NEWLINE,
+        "Return only the corrected label, don't include a preamble."
     ]
     prompt_pieces: List[str] = []
     prompt_pieces.extend(prefix)
     prompt_pieces.append(NEWLINE)
-    prompt_pieces.extend(sentences)
+    prompt_pieces.extend(enumerated_points.values())
     prompt_pieces.append(NEWLINE)
     prompt_pieces.extend(suffix)
     
@@ -33,24 +79,47 @@ def build_prompt(sentences: List[str]) -> str:
     return prompt_text
 
 
+def build_enumerated_points(text_to_check) -> Dict[int, str]:
+    return {idx:f'{(idx+1)}. {txt.strip()}' for idx, txt in enumerate(text_to_check)}
+
 if __name__ == "__main__":
-    text_to_check: List[str] = [
-        "smokes 1-1/2 pkg.q/day.",
-        "quit 8/1903- smoked x 14 yrs",
-        "smokes 2 p.p.d.",
-        # "quit in 1985   smoker for about 14-15 yrs.",
-    ]
+
+    start_time = time.time()
+
+    query_label = "Smoking Status"
+
+    text_to_check = []
+    with open(r'X:\_\Project_Deppen_Lung-Cancer\Deppen-HF-Comments-Processing\__archive\samples\.non_phi_samples\smoke\smoke_mock_data.txt') as fh:
+        text_to_check = fh.readlines()
+    
+    # random.shuffle(text_to_check)
+    text_to_check = text_to_check[0:10]
+
     prompt_text = build_prompt(text_to_check)
+    
     response: None | str = query_prompt(prompt_text)
 
-    # retval += "| Health Factor Comment        | Corrected Text                     |\n"
-    # retval += "|------------------------------|------------------------------------|\n"
-    # for r in results_generator:
-    #     retval += f"|{r[0]}             | {r[1]} |\n"
+    prompt_results: List[PromptResult] = [x for x in extract_results(response, WEIGHTED_LABELS, label_lookup) if x]
+    
+    assert len(text_to_check) == len(prompt_results)
+    for idx, p in enumerate(prompt_results):
+        prompt_results[idx].comment = text_to_check[idx]
+    
+    df: pd.DataFrame = pd.DataFrame.from_records([asdict(x).values() for x in prompt_results])
+    df.columns = ["#", "label", "Comment"]
+    query_label_file_name: str = query_label.replace(' ', '_').rstrip().lower()
+    with open(rf'X:\_\NLPSSC\ai-typing-assistant\_output\result_{query_label_file_name}.md', 'w') as fh:
+        fh.write(f'# Results for query: {query_label.title()}{NEWLINE}{NEWLINE}')
+        fh.write(f'## Prompt{NEWLINE}{NEWLINE}')
+        fh.write(f"<pre>{NEWLINE}{NEWLINE}{prompt_text.replace(f'{NEWLINE}{NEWLINE}', NEWLINE)}{NEWLINE}{NEWLINE}</pre>{NEWLINE}{NEWLINE}")
+        fh.write(f'## Results{NEWLINE}{NEWLINE}')
+        fh.write(df.to_markdown(index=False))
 
-    print(prompt_text)
-    print()
+        end_time = time.time()
 
-    headers = ["original comment", "updated comment"]
-    print()
-    print(response)
+        fh.write(f'{NEWLINE}')
+        fh.write(f'## Metrics{NEWLINE}{NEWLINE}')
+        fh.write(f'Total Processing Time: {(end_time - start_time)} secs')
+        fh.write(f'{NEWLINE}{NEWLINE}')
+        fh.write(f'## Configuration{NEWLINE}{NEWLINE}')
+        fh.write(f'LLM: {OLLAMA_CONFIG}')
