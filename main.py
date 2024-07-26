@@ -1,90 +1,41 @@
-import time
-from string import Template
-
+from typing import List
 import httpx
-from pynput import keyboard
-from pynput.keyboard import Key, Controller
-import pyperclip
+import formatting
+from llm import query_prompt
+from ollama_config import OLLAMA_CONFIG, OLLAMA_ENDPOINT
 
 
-controller = Controller()
+def build_prompt(*text: str) -> str:
 
-OLLAMA_ENDPOINT = "http://localhost:11434/api/generate"
-OLLAMA_CONFIG = {
-    "model": "mistral:7b-instruct-v0.2-q4_K_S",
-    "keep_alive": "5m",
-    "stream": False,
-}
+    NEWLINE = "\n"
 
-PROMPT_TEMPLATE = Template(
-    """Fix all typos and casing and punctuation in this text, but preserve all new line characters:
-
-$text
-
-Return only the corrected text, don't include a preamble.
-"""
-)
-
-
-def fix_text(text):
-    prompt = PROMPT_TEMPLATE.substitute(text=text)
-    response = httpx.post(
-        OLLAMA_ENDPOINT,
-        json={"prompt": prompt, **OLLAMA_CONFIG},
-        headers={"Content-Type": "application/json"},
-        timeout=10,
+    prefix = [
+        "Fix all typos and punctuation in the following text, preserving newline characters.",
+        NEWLINE
+    ]
+    bullet_points: List[str] = list(text)
+    suffix: List[str] = [
+        NEWLINE,
+        "Return only the corrected text, and do not include a preamble."
+    ]
+    prompt_pieces: List[str] = (
+        prefix + formatting.to_bullet_points(bullet_points) + suffix
     )
-    if response.status_code != 200:
-        print("Error", response.status_code)
-        return None
-    return response.json()["response"].strip()
+    return "\n".join(prompt_pieces)
 
 
-def fix_current_line():
-    # macOS short cut to select current line: Cmd+Shift+Left
-    controller.press(Key.cmd)
-    controller.press(Key.shift)
-    controller.press(Key.left)
+if __name__ == "__main__":
+    text_to_check: List[str] = [
+        "smokes 1-1/2 pkg.q/day.",
+        "quit 8/1903- smoked x 14 yrs",
+        "smokes 2 p.p.d.",
+        "quit in 1985   smoker for about 14-15 yrs.",
+    ]
+    response: None | str = query_prompt(build_prompt(text_to_check))
 
-    controller.release(Key.cmd)
-    controller.release(Key.shift)
-    controller.release(Key.left)
+    # retval += "| Health Factor Comment        | Corrected Text                     |\n"
+    # retval += "|------------------------------|------------------------------------|\n"
+    # for r in results_generator:
+    #     retval += f"|{r[0]}             | {r[1]} |\n"
 
-    fix_selection()
-
-
-def fix_selection():
-    # 1. Copy selection to clipboard
-    with controller.pressed(Key.cmd):
-        controller.tap("c")
-
-    # 2. Get the clipboard string
-    time.sleep(0.1)
-    text = pyperclip.paste()
-
-    # 3. Fix string
-    if not text:
-        return
-    fixed_text = fix_text(text)
-    if not fixed_text:
-        return
-
-    # 4. Paste the fixed string to the clipboard
-    pyperclip.copy(fixed_text)
-    time.sleep(0.1)
-
-    # 5. Paste the clipboard and replace the selected text
-    with controller.pressed(Key.cmd):
-        controller.tap("v")
-
-
-def on_f9():
-    fix_current_line()
-
-
-def on_f10():
-    fix_selection()
-
-
-with keyboard.GlobalHotKeys({"<101>": on_f9, "<109>": on_f10}) as h:
-    h.join()
+    print(response)
