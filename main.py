@@ -10,11 +10,16 @@ def build_prompt(sentences: List[str]) -> str:
     NEWLINE = "\n"
 
     prefix = [
-        "The each of following phrases are descriptions about a person; does the text indicate they currently smoke?",
+        "The each of following phrases are descriptions about a person and their smoking status.",
+        "Evaluate each of these phrases, and return a label indicating their smoking status.",
     ]
     
     suffix: List[str] = [
-        "Return whether the person is a current smoker, using the label CURRENT_SMOKER, or they have quit smoking, using the label PREVIOUS_SMOKER"
+        "Return on of the following labels:",
+        "",
+        "- if the person is a smoker, return the label CURRENT_SMOKER",
+        "- if the person quit smoking in the past, return the label PAST_SMOKER",
+        "- if the person has never smoked, return the label NEVER_SMOKED"
     ]
     prompt_pieces: List[str] = []
     prompt_pieces.extend(prefix)
