@@ -10,17 +10,17 @@ def build_prompt(sentences: List[str]) -> str:
     NEWLINE = "\n"
 
     prefix = [
-        "Fix all typos and punctuation in the following text, preserving newline characters.",
-        NEWLINE
+        "Fix all typos and casing and punctuation in this text, but preserve all new line characters:",
     ]
     
     suffix: List[str] = [
-        NEWLINE,
         "Return only the corrected text, and do not include a preamble."
     ]
     prompt_pieces: List[str] = []
     prompt_pieces.extend(prefix)
+    prompt_pieces.append(NEWLINE)
     prompt_pieces.extend(sentences)
+    prompt_pieces.append(NEWLINE)
     prompt_pieces.extend(suffix)
     
     prompt_text = "\n".join(prompt_pieces)
@@ -30,9 +30,9 @@ def build_prompt(sentences: List[str]) -> str:
 
 if __name__ == "__main__":
     text_to_check: List[str] = [
-        "smokes 1-1/2 pkg.q/day.",
-        "quit 8/1903- smoked x 14 yrs",
-        # "smokes 2 p.p.d.",
+        # "smokes 1-1/2 pkg.q/day.",
+        # "quit 8/1903- smoked x 14 yrs",
+        "smokes 2 p.p.d.",
         # "quit in 1985   smoker for about 14-15 yrs.",
     ]
     response: None | str = query_prompt(build_prompt(text_to_check))
@@ -43,4 +43,5 @@ if __name__ == "__main__":
     #     retval += f"|{r[0]}             | {r[1]} |\n"
 
     headers = ["original comment", "updated comment"]
+    print()
     print(response)
