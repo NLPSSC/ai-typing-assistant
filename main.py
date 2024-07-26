@@ -12,11 +12,11 @@ from parser import PromptResult, extract_results
 NEWLINE = "\n"
 
 WEIGHTED_LABELS = {
-    "CURRENT_SMOKER": {"weight": 2, "reason": "the person is a smoker"},
-    "NEVER_SMOKED": {"weight": 1, "reason": "the person has never smoked"},
-    "PAST_SMOKER": {"weight": 4, "reason": "the person quit smoking in the past"},
-    "TOBACCO_USER": {"synonym_of": "NEVER_SMOKED"},
-    "NEVER_SMOKER": {"synonym_of": "NEVER_SMOKED"},
+    "CURRENT-SMOKER": {"weight": 2, "reason": "the person is a smoker"},
+    "NEVER-SMOKED": {"weight": 1, "reason": "the person has never smoked"},
+    "PAST-SMOKER": {"weight": 4, "reason": "the person quit smoking in the past"},
+    "TOBACCO-USER": {"synonym_of": "NEVER-SMOKED"},
+    "NEVER-SMOKER": {"synonym_of": "NEVER-SMOKED"},
 }
 
 
@@ -33,7 +33,7 @@ def get_weight(weighted_labels: Dict[str, Any], k: str) -> Tuple[str, int]:
             new_key = v["synonym_of"]
             return str(new_key), int(weighted_labels[new_key]["weight"])
         else:
-            return str(k), int(-1)    
+            return str(k), int(-1)
     else:
         return str(k), int(-1)
 
@@ -49,22 +49,32 @@ def build_prompt(text_to_check) -> str:
 
     prefix = [
         "This is an exercise to label sentences to indicate smoking status for people.",
-        "Smoking status does not include references to marijuana or chewing tobacco as part of the labeling.",
+        # "marijuana or chewing tobacco as part of the labeling.",
+        "The only permitted labels for this activity are CURRENT-SMOKER, PAST-SMOKER, and NEVER-SMOKED.  Do not use or create any new labels."
+        "The following rule should be applied when assigning labels:"
+        "- Do not include references to the following terms as part of the decision:"
+        "   - marijuana,",
+        "   - pot, or",
+        "   - chewing tobacco.",
+        "- Present tense use of the verb \"smoke\" indicates CURRENT-SMOKER"
+        "- References to cigars or pipes indicate CURRENT-SMOKER"
         "Each of following numbered phrases represent an assertion about smoking status for different people.",
     ]
 
+    comments = enumerated_points.values()
+
     suffix: List[str] = [
         "Return only one of the following labels:",
-        "   - Return the label CURRENT_SMOKER, if the person is a smoker,",
-        "   - Return the label PAST_SMOKER, if the person quit smoking in the past, or",
-        "   - Return the label NEVER_SMOKED, if the person has never smoked.",
+        "   - Return the label CURRENT-SMOKER, if the person is a smoker,",
+        "   - Return the label PAST-SMOKER, if the person quit smoking in the past, or",
+        "   - Return the label NEVER-SMOKED, if the person has never smoked.",
         NEWLINE,
         "Return only the corrected label, don't include a preamble.",
     ]
     prompt_pieces: List[str] = []
     prompt_pieces.extend(prefix)
     prompt_pieces.append(NEWLINE)
-    prompt_pieces.extend(enumerated_points.values())
+    prompt_pieces.extend(comments)
     prompt_pieces.append(NEWLINE)
     prompt_pieces.extend(suffix)
 
@@ -79,6 +89,8 @@ def build_enumerated_points(text_to_check) -> Dict[int, str]:
 
 if __name__ == "__main__":
 
+    MAX_NUMBER_COMMENTS = 10
+
     start_time = time.time()
 
     query_label = "Smoking Status"
@@ -90,7 +102,8 @@ if __name__ == "__main__":
         text_to_check = fh.readlines()
 
     # random.shuffle(text_to_check)
-    text_to_check = text_to_check[0:10]
+    if MAX_NUMBER_COMMENTS:
+        text_to_check = text_to_check[0:MAX_NUMBER_COMMENTS]
 
     prompt_text = build_prompt(text_to_check)
 
@@ -125,7 +138,7 @@ if __name__ == "__main__":
 
         fh.write(f"{NEWLINE}")
         fh.write(f"## Metrics{NEWLINE}{NEWLINE}")
-        fh.write(f"Total Processing Time: {(end_time - start_time)} secs")
+        fh.write(f"Total Processing Time: {round((end_time - start_time), 2)} secs")
         fh.write(f"{NEWLINE}{NEWLINE}")
         fh.write(f"## Configuration{NEWLINE}{NEWLINE}")
-        fh.write(f"LLM: {OLLAMA_CONFIG}")
+        fh.write(f"LLM model: {OLLAMA_CONFIG['model']}")

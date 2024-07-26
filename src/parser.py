@@ -41,14 +41,18 @@ def extract_results(
     response: str, weighted_labels: Dict[str, int], label_lookup
 ) -> List[PromptResult | None]:
 
-    assigned_labels = list(weighted_labels.keys())
-    assigned_labels.append(r'\b[A-Z_]+\b')
-    result_pattern: re.Pattern[str] = re.compile(
-        r"(" + "|".join(assigned_labels) + ")"
-    )
+    result_pattern = update_weighted_labels_with_catchall(weighted_labels)
 
     extract_result_partial = partial(extract_result, result_pattern, label_lookup)
 
     response_entries = response.split("\n")
 
     return [extract_result_partial(x) for x in response_entries]
+
+
+def update_weighted_labels_with_catchall(weighted_labels):
+    assigned_labels = list(weighted_labels.keys())
+    assigned_labels.append(r"\b[A-Z_]{3,}\b")
+    result_pattern: re.Pattern[str] = re.compile(r"(" + "|".join(assigned_labels) + ")")
+
+    return result_pattern
